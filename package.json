@@ -1,0 +1,14 @@
+{
+  "name": "pillar-tracker-cloud",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Marketing Pillar Tracker — pulls Meta and Sierra on a schedule in the cloud and publishes the figures, encrypted.",
+  "scripts": {
+    "update": "node cloud-run.js",
+    "quick": "node cloud-run.js --quick",
+    "page": "node make-live.js --page"
+  },
+  "dependencies": {
+    "playwright": "1.49.1"
+  }
+}

@@ -1,0 +1,143 @@
+name: Refresh the tracker
+
+# Pulls Meta and Sierra, checks every figure against Meta, and publishes the
+# locked numbers. Nothing here needs a laptop, a browser tab, or anyone awake.
+#
+# Times are UTC, as GitHub requires. Calgary is UTC-6 in summer and UTC-7 in
+# winter, so the window below covers 7am to 10pm local in both halves of the
+# year. The minutes avoid :00, which is when every scheduled job on GitHub
+# starts at once and the queue is slowest.
+
+on:
+  schedule:
+    - cron: '5,20,35,50 13-23,0-5 * * *'   # the quick refresh
+    - cron: '7 14 * * *'                   # once a day: the full audit against Meta
+  workflow_dispatch:                       # the "Run workflow" button
+    inputs:
+      full:
+        description: 'Run the full audit (slower, ~130 questions put to Meta)'
+        type: boolean
+        default: false
+
+permissions:
+  contents: write     # to commit the daily backup of state.enc
+  pages: write        # to publish the numbers
+  id-token: write
+
+# One run at a time. Two at once would fight over the working files.
+concurrency:
+  group: tracker-refresh
+  cancel-in-progress: false
+
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    environment:
+      name: github-pages
+      url: ${{ steps.deploy.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v4
+
+      # What one run learned, the next run needs: which leads are already known,
+      # who their agent is, what was typed in by hand. It is carried between runs
+      # here rather than committed, because committing a megabyte every fifteen
+      # minutes would bloat the repository within a week. The day's full run
+      # commits it as a backup, so losing the cache costs a day at most.
+      - name: Pick up where the last run left off
+        uses: actions/cache@v4
+        with:
+          path: state.enc
+          key: tracker-state-${{ github.run_id }}
+          restore-keys: tracker-state-
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Decide which kind of run this is
+        id: kind
+        run: |
+          if [ "${{ github.event.schedule }}" = "7 14 * * *" ] || [ "${{ inputs.full }}" = "true" ]; then
+            echo "full=true" >> $GITHUB_OUTPUT
+          else
+            echo "full=false" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Install Chromium for the Sierra reading
+        run: |
+          npm install --no-audit --no-fund
+          npx playwright install --with-deps chromium
+
+      - name: Open the working files
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+        run: node state.js unpack
+
+      - name: Put the keys where the scripts look for them
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          SIERRA_API_KEY: ${{ secrets.SIERRA_API_KEY }}
+        run: |
+          printf '%s\n' "$META_TOKEN" > meta-token.txt
+          printf '%s\n' "$SIERRA_API_KEY" > sierra-api-key.txt
+
+      - name: Pull, check and build
+        env:
+          META_TOKEN: ${{ secrets.META_TOKEN }}
+          SIERRA_SITE: ${{ secrets.SIERRA_SITE }}
+          SIERRA_USER: ${{ secrets.SIERRA_USER }}
+          SIERRA_PASS: ${{ secrets.SIERRA_PASS }}
+          SIERRA_HOST: ${{ secrets.SIERRA_HOST }}
+          DATA_URL: ${{ vars.DATA_URL }}
+          PAGE_PASSWORD: ${{ secrets.PAGE_PASSWORD }}
+        run: |
+          if [ "${{ steps.kind.outputs.full }}" = "true" ]; then
+            node cloud-run.js
+          else
+            node cloud-run.js --quick
+          fi
+
+      - name: Lock the working files away again
+        if: success()
+        env:
+          STATE_KEY: ${{ secrets.STATE_KEY }}
+        run: node state.js pack
+
+      - name: Forget the keys
+        if: always()
+        run: rm -f meta-token.txt sierra-api-key.txt
+
+      # Once a day, keep a copy in the repository itself, so a cleared cache
+      # never costs more than one day of lead agents and hand-typed notes.
+      - name: Keep the daily backup
+        if: success() && steps.kind.outputs.full == 'true'
+        run: |
+          git config user.name  'tracker'
+          git config user.email 'tracker@users.noreply.github.com'
+          git add --force state.enc
+          git diff --cached --quiet || git commit -m "Figures as of $(date -u '+%Y-%m-%d %H:%M') UTC"
+          git push
+
+      - uses: actions/configure-pages@v5
+        if: success()
+      - uses: actions/upload-pages-artifact@v3
+        if: success()
+        with:
+          path: docs
+      - id: deploy
+        if: success()
+        uses: actions/deploy-pages@v4
+
+      # A failed run publishes nothing: the file people are looking at keeps
+      # the last numbers that passed every check. This just says so out loud.
+      - name: Say what went wrong
+        if: failure()
+        run: |
+          echo '## The tracker did not update' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo 'The published figures are unchanged — they are the last ones that matched Meta.' >> $GITHUB_STEP_SUMMARY
+          echo '' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY
+          cat 'LAST RUN.txt' 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo 'The run stopped before it could say why — see the log above.' >> $GITHUB_STEP_SUMMARY
+          echo '```' >> $GITHUB_STEP_SUMMARY

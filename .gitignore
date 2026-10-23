@@ -1,0 +1,32 @@
+# Secrets — written from repository secrets at run time, never committed
+meta-token.txt
+sierra-api-key.txt
+
+# The file that holds the key. Built by hand, handed to people, never committed.
+Marketing Pillar Tracker (live).html
+
+# Working files — committed only inside state.enc, never in the clear
+meta-data.json
+leads.json
+sierra.json
+sierra-api.json
+agents.json
+Marketing Pillar Tracker.html
+sierra-lines.txt
+sierra-sync-page.js
+daily-db/
+
+# Build output
+Meta Ads Tracker - OFFLINE.html
+node_modules/
+
+# Built by the run, published to Pages, never committed
+docs/data.enc.json
+
+# The two keys, written for you to copy into GitHub. Never committed.
+KEYS - keep private.txt
+
+# Config and the run log name campaigns, listings, agents and amounts.
+# They travel inside state.enc instead.
+config.json
+LAST RUN.txt
