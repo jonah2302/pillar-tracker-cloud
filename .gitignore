@@ -50,3 +50,6 @@ build-standalone.js
 
 # Your own setup notes: your paths, your Sierra site, your repository name.
 SETUP-NOW.md
+
+# Your own paths, your repo, your Sierra site. You run it; it is not for the public half.
+set-secrets.ps1
