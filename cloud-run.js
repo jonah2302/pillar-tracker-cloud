@@ -15,6 +15,10 @@ const fs = require('fs'), path = require('path'), { spawnSync } = require('child
 
 const DIR = __dirname;
 const QUICK = process.argv.includes('--quick');
+/* --figures skips Sierra and the artwork: the five-minute pass, which only has
+   to answer "what has Meta spent and how many leads came back". Sierra's screens
+   need a browser and a few minutes, so they run on their own slower rhythm. */
+const FIGURES = process.argv.includes('--figures');
 const summary = [];
 let failed = null;
 
@@ -55,10 +59,17 @@ function stop(why) { failed = why; }
   const names = runWithRetry('pull-leads.js');
   if (!names.ok) summary.push('lead names could not be refreshed — kept the previous ones');
 
+  /* 3b. the ads running right now: format, words, artwork and their own daily
+        figures. A failure keeps the last set rather than emptying the tab. */
+  const cre = runWithRetry('pull-creatives.js', FIGURES ? ['--no-art'] : []);
+  if (!cre.ok) summary.push('the running ads could not be refreshed — kept the previous set');
+
   /* 4. Sierra: new leads and agents from the API, then follow-up from the screens.
         Neither can block the Meta update; each keeps its last good reading. */
-  if (fs.existsSync(path.join(DIR, 'sierra-api-key.txt'))) run('sierra-api.js');
-  run('cloud-sierra.js', QUICK ? ['--quick'] : []);
+  if (!FIGURES) {
+    if (fs.existsSync(path.join(DIR, 'sierra-api-key.txt'))) run('sierra-api.js');
+    run('cloud-sierra.js', QUICK ? ['--quick'] : []);
+  }
 
   /* 5. rebuild */
   r = run('build-from-data.js', ['--no-share']);
@@ -70,7 +81,7 @@ function stop(why) { failed = why; }
         The quick runs lean on the week-by-week and month checks above, so
         Meta's hourly request limit is never reached. */
   let a = { ok: true, out: 'quick run — every week and month checked against Meta' };
-  if (!QUICK) {
+  if (!QUICK && !FIGURES) {
     a = run('audit-meta.js');
     if (!a.ok) { run('pull-meta.js'); run('build-from-data.js', ['--no-share']); a = run('audit-meta.js'); }
   }
@@ -81,7 +92,7 @@ function stop(why) { failed = why; }
   if (!r.ok) return stop('Could not build the live page: ' + lastLines(r.out));
 
   summary.unshift('This week: ' + thisWeek, 'All time:  ' + allTime,
-    'Checks:    ' + (QUICK ? 'quick run — every week and month verified' : ((a.out.match(/(\d+) checks, 0 mismatches/) || [])[0] || 'audit passed')));
+    'Checks:    ' + ((QUICK || FIGURES) ? 'quick run — every week and month verified' : ((a.out.match(/(\d+) checks, 0 mismatches/) || [])[0] || 'audit passed')));
 })();
 
 const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16) + ' UTC';

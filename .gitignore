@@ -24,9 +24,25 @@ node_modules/
 docs/data.enc.json
 
 # The two keys, written for you to copy into GitHub. Never committed.
-KEYS - keep private.txt
+KEYS*.txt
 
 # Config and the run log name campaigns, listings, agents and amounts.
 # They travel inside state.enc instead.
 config.json
 LAST RUN.txt
+
+# Ad creatives: campaign names, listing addresses and the artwork itself.
+# Same reason meta-data.json is kept out — the repository is public.
+creatives.json
+creative-art/
+claude-creatives/
+
+# Names the ad account, the app and the Page. Local setup note, not for the public repo.
+VIDEO-PLAYBACK.md
+
+creative-video/
+
+# The page itself IS the source the build starts from, so it has to be committed.
+# Named here because git on Windows ignores case, and the built file above
+# differs from it only by capitals.
+!marketing-pillar-tracker.html

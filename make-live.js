@@ -61,9 +61,25 @@ const grab = name => {
   if (!line) { console.error('make-live.js: could not read ' + name + ' out of the offline build.'); process.exit(1); }
   return JSON.parse(line.slice(pre.length).replace(/;\s*$/, ''));
 };
+/* The ads ride along with their artwork, so a tracker reading the feed shows the
+   same cards as the file. The offline build drops Meta's signed preview link,
+   because a file sits in somebody's inbox for days and the link lasts hours; the
+   feed is rewritten every few minutes, so the link goes back in here, fresh from
+   the pull that just ran. */
+function adsWithLinks() {
+  let ads = [];
+  try { ads = grab('SEED_ADS') || []; } catch (e) { return []; }
+  let live = {};
+  try {
+    const c = JSON.parse(fs.readFileSync(path.join(DIR, 'creatives.json'), 'utf8'));
+    (c.ads || []).forEach(a => { if (a.links) live[a.adId] = a.links; });
+  } catch (e) { }
+  return ads.map(a => live[a.adId] ? Object.assign({}, a, { links: live[a.adId] }) : a);
+}
 const payload = {
   rows: grab('SEED_ROWS'), snaps: grab('SEED_SNAPS'), days: grab('SEED_DAYS'),
-  sierra: grab('SEED_SIERRA'), updated: grab('SEED_UPDATED'), builtAt: new Date().toISOString()
+  sierra: grab('SEED_SIERRA'), ads: adsWithLinks(),
+  updated: grab('SEED_UPDATED'), builtAt: new Date().toISOString()
 };
 const plain = Buffer.from(JSON.stringify(payload), 'utf8');
 

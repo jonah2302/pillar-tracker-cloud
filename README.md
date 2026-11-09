@@ -1,9 +1,12 @@
 # Marketing Pillar Tracker — the cloud copy
 
-The tracker, running without your laptop and without Claude. GitHub pulls Meta and
-Sierra every fifteen minutes, checks every figure against Meta, and publishes the
-numbers. The file you share fetches them when someone opens it, so it is never out
-of date, no matter how long ago you sent it.
+The tracker, running without your laptop and without Claude. GitHub pulls the
+figures every five minutes and Sierra every half hour, checks everything against
+Meta, and publishes the numbers. Both the Claude tracker page and the file you
+share fetch them on their own, so neither is ever out of date, no matter how long
+ago you sent it.
+
+**Not set up yet? Start at [SETUP-NOW.md](SETUP-NOW.md).**
 
 Free: public repository, so GitHub charges nothing for the runs.
 
@@ -12,10 +15,12 @@ Free: public repository, so GitHub charges nothing for the runs.
 ## How the pieces fit
 
 ```
-every 15 min, 7am–10pm                 GitHub Actions, free
+every 5 min (Sierra every 30)          GitHub Actions, free
   pull-meta.js ........ spend and leads, every week checked against Meta
   verify-periods.js ... month and all-time totals, to the cent
   pull-leads.js ....... lead names
+  pull-creatives.js ... format, copy and artwork of every ad running, and each
+                        ad's own spend and leads day by day
   sierra-api.js ....... new leads and their agent, from Sierra's API
   cloud-sierra.js ..... calls, texts, emails — headless Chromium signed in to Sierra
   build-from-data.js .. rebuilds the tracker
@@ -25,6 +30,7 @@ every 15 min, 7am–10pm                 GitHub Actions, free
                         docs/data.enc.json  →  GitHub Pages (public address, unreadable)
                                    |
          "Marketing Pillar Tracker (live).html"  ←  the file you share, holds the key
+         the Claude tracker page                 ←  reads the same feed, every 5 min
 ```
 
 **If any check fails, nothing is published.** The file keeps showing the last

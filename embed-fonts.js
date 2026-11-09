@@ -38,16 +38,16 @@ function get(url) {
   const linkRe = /<link rel="preconnect"[^>]*>\s*<link rel="preconnect"[^>]*>\s*<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/css2[^"]*">/;
   if (!linkRe.test(html)) throw new Error('font <link> block not found in ' + target);
   html = html.replace(linkRe,
-    '<style id="fontCss">\n/* Marcellus, Marcellus SC and Jost embedded — this file loads nothing from the internet. */\n' + css + '\n</style>');
+    '<style id="fontCss">\n/* Marcellus, Marcellus SC and IBM Plex Sans embedded — this file loads nothing from the internet. */\n' + css + '\n</style>');
 
   // the PDF report builds its own document; point it at the same embedded bytes
   // instead of the network, and instead of a second copy of the fonts
-  const reportLinks =
-    "'<link rel=\"preconnect\" href=\"https://fonts.googleapis.com\">'+\n" +
-    "    '<link rel=\"preconnect\" href=\"https://fonts.gstatic.com\" crossorigin>'+\n" +
-    "    '<link rel=\"stylesheet\" href=\"https://fonts.googleapis.com/css2?family=Marcellus&family=Marcellus+SC&family=Jost:wght@300;400;500;600&display=swap\">'+";
-  if (html.indexOf(reportLinks) < 0) throw new Error('report font links not found');
-  html = html.replace(reportLinks,
+  // the PDF report builds its own document; point it at the same embedded
+  // bytes instead of the network. Matched by shape, not by exact text, so
+  // reformatting the page cannot quietly break the offline build.
+  const reportRe = /'<link rel="preconnect" href="https:\/\/fonts\.googleapis\.com">'\+\s*'<link rel="preconnect" href="https:\/\/fonts\.gstatic\.com" crossorigin>'\+\s*'<link rel="stylesheet" href="https:\/\/fonts\.googleapis\.com\/css2[^"]*">'\+/;
+  if (!reportRe.test(html)) throw new Error('report font links not found');
+  html = html.replace(reportRe,
     "'<style>'+((document.getElementById(\"fontCss\")||{}).textContent||\"\")+'</style>'+");
 
   const left = (html.match(/https?:\/\/(?!fonts\.gstatic)[^"' )]+/g) || []).filter(u => !u.startsWith('data:'));

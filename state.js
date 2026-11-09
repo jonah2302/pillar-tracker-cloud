@@ -30,8 +30,14 @@ const FILES = [
   'sierra.json',
   'sierra-api.json',
   'agents.json',
+  'creatives.json',
   'Marketing Pillar Tracker.html'
 ];
+/* The artwork is binary and it is slow to fetch, so it travels here too rather
+   than being downloaded again every run. The five-minute pass asks Meta only
+   for figures; without this the ad cards on that pass would have no pictures. */
+const ART_DIRS = ['creative-art', 'creative-video'];
+const ART_MAX = 12e6;   /* a film bigger than this stays where it is */
 
 const mode = process.argv[2];
 if (mode !== 'pack' && mode !== 'unpack') { console.error('use: node state.js pack | unpack'); process.exit(1); }
@@ -40,20 +46,30 @@ if (!KEY_TEXT) { console.error('state.js: STATE_KEY is not set — refusing to h
 const keyFrom = salt => crypto.pbkdf2Sync(KEY_TEXT, salt, ITER, 32, 'sha256');
 
 if (mode === 'pack') {
-  const bundle = {};
+  const bundle = {}, art = {};
   FILES.forEach(f => {
     const p = path.join(DIR, f);
     if (fs.existsSync(p)) bundle[f] = fs.readFileSync(p, 'utf8');
   });
+  ART_DIRS.forEach(d => {
+    const dir = path.join(DIR, d);
+    if (!fs.existsSync(dir)) return;
+    fs.readdirSync(dir).forEach(f => {
+      const p = path.join(dir, f);
+      if (fs.statSync(p).isFile() && fs.statSync(p).size <= ART_MAX)
+        art[d + '/' + f] = fs.readFileSync(p).toString('base64');
+    });
+  });
   const salt = crypto.randomBytes(16), iv = crypto.randomBytes(12);
   const c = crypto.createCipheriv('aes-256-gcm', keyFrom(salt), iv);
-  const body = Buffer.concat([c.update(Buffer.from(JSON.stringify(bundle), 'utf8')), c.final(), c.getAuthTag()]);
+  const body = Buffer.concat([c.update(Buffer.from(JSON.stringify({ text: bundle, art: art }), 'utf8')), c.final(), c.getAuthTag()]);
   fs.writeFileSync(ENC, JSON.stringify({
     v: 1, kdf: 'PBKDF2-SHA256', iter: ITER,
     salt: salt.toString('base64'), iv: iv.toString('base64'), data: body.toString('base64'),
-    packedAt: new Date().toISOString(), files: Object.keys(bundle)
+    packedAt: new Date().toISOString(), files: Object.keys(bundle), art: Object.keys(art).length
   }));
-  console.log('state.enc: ' + Object.keys(bundle).length + ' files locked (' + (fs.statSync(ENC).size / 1024).toFixed(0) + ' KB)');
+  console.log('state.enc: ' + Object.keys(bundle).length + ' files and ' + Object.keys(art).length +
+    ' pieces of artwork locked (' + (fs.statSync(ENC).size / 1024).toFixed(0) + ' KB)');
   process.exit(0);
 }
 
@@ -75,6 +91,14 @@ d.setAuthTag(all.slice(all.length - 16));
 let plain;
 try { plain = Buffer.concat([d.update(all.slice(0, all.length - 16)), d.final()]); }
 catch (e) { console.error('state.js: STATE_KEY does not open state.enc. If the key was changed, delete state.enc and let the next run build it again.'); process.exit(1); }
-const bundle = JSON.parse(plain.toString('utf8'));
+const packed = JSON.parse(plain.toString('utf8'));
+/* a bundle written before the artwork was carried is a flat map of text files */
+const bundle = packed.text || packed, art = packed.art || {};
 Object.keys(bundle).forEach(f => fs.writeFileSync(path.join(DIR, f), bundle[f], 'utf8'));
-console.log('state.enc: ' + Object.keys(bundle).length + ' files opened, packed ' + (j.packedAt || 'at an unknown time'));
+Object.keys(art).forEach(f => {
+  const p = path.join(DIR, f);
+  fs.mkdirSync(path.dirname(p), { recursive: true });
+  fs.writeFileSync(p, Buffer.from(art[f], 'base64'));
+});
+console.log('state.enc: ' + Object.keys(bundle).length + ' files and ' + Object.keys(art).length +
+  ' pieces of artwork opened, packed ' + (j.packedAt || 'at an unknown time'));

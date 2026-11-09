@@ -3,19 +3,30 @@ name: Refresh the tracker
 # Pulls Meta and Sierra, checks every figure against Meta, and publishes the
 # locked numbers. Nothing here needs a laptop, a browser tab, or anyone awake.
 #
+# Three rhythms, because the three jobs cost very different amounts of time:
+#
+#   every 5 minutes   spend, leads and the running ads. No browser, no artwork
+#                     download, no Sierra — about a minute end to end, which is
+#                     what makes a five-minute rhythm affordable at all.
+#   every 30 minutes  the same, plus Sierra: who has been called, texted and
+#                     emailed. Needs a headless Chromium, so it takes minutes.
+#   once a day        the full audit — about 200 questions put back to Meta,
+#                     every week and every month, to the cent.
+#
 # Times are UTC, as GitHub requires. Calgary is UTC-6 in summer and UTC-7 in
-# winter, so the window below covers 7am to 10pm local in both halves of the
-# year. The minutes avoid :00, which is when every scheduled job on GitHub
-# starts at once and the queue is slowest.
+# winter, so the windows below cover 7am to 10pm local in both halves of the
+# year. GitHub's scheduler is best-effort and runs late when it is busy, so
+# treat "every 5 minutes" as "usually within five to fifteen".
 
 on:
   schedule:
-    - cron: '5,20,35,50 13-23,0-5 * * *'   # the quick refresh
-    - cron: '7 14 * * *'                   # once a day: the full audit against Meta
+    - cron: '*/5 13-23,0-5 * * *'          # figures and running ads
+    - cron: '2,32 13-23,0-5 * * *'         # the same, plus Sierra
+    - cron: '7 14 * * *'                   # once a day: the full audit
   workflow_dispatch:                       # the "Run workflow" button
     inputs:
       full:
-        description: 'Run the full audit (slower, ~130 questions put to Meta)'
+        description: 'Run the full audit (slower, ~200 questions put to Meta)'
         type: boolean
         default: false
 
@@ -24,7 +35,8 @@ permissions:
   pages: write        # to publish the numbers
   id-token: write
 
-# One run at a time. Two at once would fight over the working files.
+# One run at a time. Two at once would fight over the working files. A figures
+# run that falls due while Sierra is still reading simply waits its turn.
 concurrency:
   group: tracker-refresh
   cancel-in-progress: false
@@ -41,8 +53,8 @@ jobs:
 
       # What one run learned, the next run needs: which leads are already known,
       # who their agent is, what was typed in by hand. It is carried between runs
-      # here rather than committed, because committing a megabyte every fifteen
-      # minutes would bloat the repository within a week. The day's full run
+      # here rather than committed, because committing a megabyte every five
+      # minutes would bloat the repository within a day. The day's full run
       # commits it as a backup, so losing the cache costs a day at most.
       - name: Pick up where the last run left off
         uses: actions/cache@v4
@@ -58,13 +70,20 @@ jobs:
       - name: Decide which kind of run this is
         id: kind
         run: |
-          if [ "${{ github.event.schedule }}" = "7 14 * * *" ] || [ "${{ inputs.full }}" = "true" ]; then
-            echo "full=true" >> $GITHUB_OUTPUT
+          SCHED='${{ github.event.schedule }}'
+          if [ "$SCHED" = "7 14 * * *" ] || [ "${{ inputs.full }}" = "true" ]; then
+            echo "mode=full" >> $GITHUB_OUTPUT
+          elif [ "$SCHED" = "*/5 13-23,0-5 * * *" ]; then
+            echo "mode=figures" >> $GITHUB_OUTPUT
           else
-            echo "full=false" >> $GITHUB_OUTPUT
+            echo "mode=quick" >> $GITHUB_OUTPUT
           fi
 
+      # The figures pass never opens Sierra, so it needs neither the packages
+      # nor the browser. Skipping both is the whole reason it finishes in about
+      # a minute instead of eight.
       - name: Install Chromium for the Sierra reading
+        if: steps.kind.outputs.mode != 'figures'
         run: |
           npm install --no-audit --no-fund
           npx playwright install --with-deps chromium
@@ -92,11 +111,11 @@ jobs:
           DATA_URL: ${{ vars.DATA_URL }}
           PAGE_PASSWORD: ${{ secrets.PAGE_PASSWORD }}
         run: |
-          if [ "${{ steps.kind.outputs.full }}" = "true" ]; then
-            node cloud-run.js
-          else
-            node cloud-run.js --quick
-          fi
+          case '${{ steps.kind.outputs.mode }}' in
+            full)    node cloud-run.js ;;
+            figures) node cloud-run.js --figures ;;
+            *)       node cloud-run.js --quick ;;
+          esac
 
       - name: Lock the working files away again
         if: success()
@@ -111,7 +130,7 @@ jobs:
       # Once a day, keep a copy in the repository itself, so a cleared cache
       # never costs more than one day of lead agents and hand-typed notes.
       - name: Keep the daily backup
-        if: success() && steps.kind.outputs.full == 'true'
+        if: success() && steps.kind.outputs.mode == 'full'
         run: |
           git config user.name  'tracker'
           git config user.email 'tracker@users.noreply.github.com'

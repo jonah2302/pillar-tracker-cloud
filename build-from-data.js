@@ -262,11 +262,46 @@ try {
     fs.writeFileSync(path.join(dailyDir, 'sierra.json'), JSON.stringify(SIERRA));   // for the Claude link
   }
 } catch (e) { console.log('note: sierra.json unreadable (' + e.message + ')'); }
+/* ---- the ads running right now ----
+   The shared file has no database and no artifact store, so each ad's still
+   travels inside it as a data URI, taken straight off disk rather than from
+   whatever the last pull happened to record. The Meta watch links stay as
+   plain links: a link is only followed if somebody clicks it. */
+let SEED_ADS = [];
+try {
+  const cp = path.join(DIR, 'creatives.json');
+  if (fs.existsSync(cp)) {
+    const C = JSON.parse(fs.readFileSync(cp, 'utf8'));
+    SEED_ADS = (C.ads || []).filter(a => a.running).map(a => {
+      const out = Object.assign({ adId: a.adId }, a);
+      const art = path.join(DIR, 'creative-art', a.adId + '.jpg');
+      out.art = fs.existsSync(art)
+        ? { url: 'data:image/jpeg;base64,' + fs.readFileSync(art).toString('base64'), width: 1080 }
+        : null;
+      /* the film, where one was provided, rides along too */
+      const vid = path.join(DIR, 'creative-video', a.adId + '.mp4');
+      if (a.video && a.video.playable && fs.existsSync(vid) && fs.statSync(vid).size < 12e6) {
+        out.video = { playable: true, url: 'data:video/mp4;base64,' + fs.readFileSync(vid).toString('base64') };
+      } else if (out.video) {
+        out.video = Object.assign({}, out.video, { url: null, playable: false });
+      }
+      /* Meta's signed preview link lasts hours, and this file gets opened days
+         later, so the shared copy keeps only the Ads Manager link, which does
+         not expire. */
+      if (out.links) out.links = { adsManager: out.links.adsManager || null, preview: null };
+      return out;
+    });
+    const withArt = SEED_ADS.filter(a => a.art).length;
+    console.log('ads carried    : ' + SEED_ADS.length + ' (' + withArt + ' with artwork)');
+  }
+} catch (e) { console.log('ads carried    : none (' + e.message + ')'); }
+
 html = html.replace(re,
   'var SEED_ROWS=' + JSON.stringify(rows) + ';\n' +
   'var SEED_SNAPS=' + JSON.stringify(snaps) + ';\n' +
   'var SEED_DAYS=' + JSON.stringify(seedDays) + ';' +
   (SIERRA ? '\nvar SEED_SIERRA=' + JSON.stringify(SIERRA).replace(/</g, '\\u003c') + ';' : '') +
+  '\nvar SEED_ADS=' + JSON.stringify(SEED_ADS).replace(/</g, '\\u003c') + ';' +
   '\nvar SEED_UPDATED=' + JSON.stringify(DATA.pulledAt || '') + ';');
 fs.writeFileSync(trackerPath, html, 'utf8');
 
