@@ -42,7 +42,7 @@ VIDEO-PLAYBACK.md
 
 creative-video/
 
-# The page itself IS the source the build starts from, so it has to be committed.
-# Named here because git on Windows ignores case, and the built file above
-# differs from it only by capitals.
-!marketing-pillar-tracker.html
+# The page the build starts from. It names the Sierra site and two of the team
+# in its placeholder text, so it travels inside state.enc rather than in the
+# public half of the repository.
+marketing-pillar-tracker.html
