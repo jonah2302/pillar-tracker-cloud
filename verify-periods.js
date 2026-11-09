@@ -1,7 +1,10 @@
 // Asks Meta directly for whole-period totals (no daily breakdown) — last month,
 // this month, all time — and checks the tracker's day-by-day sums match to the cent.
 // Run after pull-meta.js:  node verify-periods.js
-const fs=require('fs'),https=require('https'),D='C:/Users/1221j/Desktop/Meta Ads Tracker/';
+// Its own folder, so the same file works on the laptop and on a cloud runner.
+// It used to name the Desktop folder outright, which is the one path that does
+// not exist on a Linux runner.
+const fs=require('fs'),https=require('https'),path=require('path'),D=__dirname+path.sep;
 const CFG=JSON.parse(fs.readFileSync(D+'config.json','utf8'));
 const tok=fs.readFileSync(D+'meta-token.txt','utf8').split(/\r?\n/).map(s=>s.trim()).filter(s=>s&&!s.startsWith('#'))[0];
 const DATA=JSON.parse(fs.readFileSync(D+'meta-data.json','utf8'));
