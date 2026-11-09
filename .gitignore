@@ -53,3 +53,7 @@ SETUP-NOW.md
 
 # Your own paths, your repo, your Sierra site. You run it; it is not for the public half.
 set-secrets.ps1
+
+# What the hourly routine builds from the feed to hand to the database. Lead
+# names and spend, so it never belongs in the public half; it is rebuilt each run.
+claude-feed/
