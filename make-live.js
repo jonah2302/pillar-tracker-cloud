@@ -99,7 +99,7 @@ if (WANT_DATA) {
 
 /* ---- 4. the page that goes and gets them ---- */
 const loader = '\n' +
-'var SEED_ROWS=[],SEED_SNAPS=[],SEED_DAYS={},SEED_SIERRA=null,SEED_UPDATED="";\n' +
+'var SEED_ROWS=[],SEED_SNAPS=[],SEED_DAYS={},SEED_SIERRA=null,SEED_ADS=[],SEED_UPDATED="";\n' +
 'var LIVE_URL=' + JSON.stringify(DATA_URL) + ',LIVE_KEY=' + JSON.stringify(PASSWORD) + ';\n' +
 'function __boot(){' + boot + '\n}\n' +
 'function __say(msg,bad){\n' +
@@ -120,7 +120,7 @@ const loader = '\n' +
 '    })\n' +
 '    .then(function(buf){\n' +
 '      var d=JSON.parse(new TextDecoder().decode(buf));\n' +
-'      SEED_ROWS=d.rows;SEED_SNAPS=d.snaps;SEED_DAYS=d.days;SEED_SIERRA=d.sierra;SEED_UPDATED=d.updated;\n' +
+'      SEED_ROWS=d.rows;SEED_SNAPS=d.snaps;SEED_DAYS=d.days;SEED_SIERRA=d.sierra;SEED_UPDATED=d.updated;SEED_ADS=d.ads||[];\n' +
 '      __boot();\n' +
 '    })\n' +
 '    .catch(function(e){\n' +
