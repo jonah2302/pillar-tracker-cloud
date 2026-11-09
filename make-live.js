@@ -102,15 +102,45 @@ const loader = '\n' +
 'var SEED_ROWS=[],SEED_SNAPS=[],SEED_DAYS={},SEED_SIERRA=null,SEED_ADS=[],SEED_UPDATED="";\n' +
 'var LIVE_URL=' + JSON.stringify(DATA_URL) + ',LIVE_KEY=' + JSON.stringify(PASSWORD) + ';\n' +
 'function __boot(){' + boot + '\n}\n' +
+'var __booted=false;\n' +
+'function __apply(){\n' +
+'  if(!__booted){__booted=true;__boot();return;}\n' +
+'  var proto=EventTarget.prototype, real=proto.addEventListener;\n' +
+'  proto.addEventListener=function(){};\n' +
+'  try{__boot();}finally{proto.addEventListener=real;}\n' +
+'}\n' +
+'var __last="";\n' +
+'function __paint(){\n' +
+'  var c=document.getElementById("ctx");\n' +
+'  if(c&&__last&&c.textContent.indexOf(__last)<0)c.textContent+=__last;\n' +
+'}\n' +
+'function __stamp(ok,why){\n' +
+'  var t=new Date().toLocaleTimeString("en-US",{hour:"numeric",minute:"2-digit"});\n' +
+'  __last=ok?" \\u00b7 checked "+t:" \\u00b7 last checked "+t+" ("+why+")";\n' +
+'  __paint();\n' +
+'}\n' +
+/* render rewrites the masthead wholesale, so the stamp goes back on after it.
+   Reassigning the name works because everything calls render() by name. */
+'(function(){\n' +
+'  if(typeof render!=="function")return;\n' +
+'  var real=render;\n' +
+'  render=function(){var r=real.apply(this,arguments);__paint();return r;};\n' +
+'})();\n' +
 'function __say(msg,bad){\n' +
 '  var h=document.getElementById("sections");if(!h)return;\n' +
 '  h.innerHTML=\'<div class="empty"><h3>\'+msg+\'</h3>\'+(bad?\'<p>\'+bad+\'</p>\':"")+\'</div>\';\n' +
 '}\n' +
-'(function(){\n' +
-'  var ctx=document.getElementById("ctx");if(ctx)ctx.textContent="Fetching the latest numbers\\u2026";\n' +
-'  __say("Fetching the latest numbers\\u2026");\n' +
+'var __busy=false;\n' +
+'function __pull(first){\n' +
+'  if(__busy)return Promise.resolve();\n' +
+'  __busy=true;\n' +
+'  var ctx=document.getElementById("ctx");\n' +
+'  if(first){\n' +
+'    if(ctx)ctx.textContent="Fetching the latest numbers\\u2026";\n' +
+'    __say("Fetching the latest numbers\\u2026");\n' +
+'  }\n' +
 '  var b=function(s){var r=atob(s),a=new Uint8Array(r.length);for(var i=0;i<r.length;i++)a[i]=r.charCodeAt(i);return a;};\n' +
-'  fetch(LIVE_URL+(LIVE_URL.indexOf("?")<0?"?":"&")+"t="+Date.now(),{cache:"no-store"})\n' +
+'  return fetch(LIVE_URL+(LIVE_URL.indexOf("?")<0?"?":"&")+"t="+Date.now(),{cache:"no-store"})\n' +
 '    .then(function(r){if(!r.ok)throw new Error("the numbers could not be reached (HTTP "+r.status+")");return r.json();})\n' +
 '    .then(function(j){\n' +
 '      return crypto.subtle.importKey("raw",new TextEncoder().encode(LIVE_KEY),"PBKDF2",false,["deriveKey"])\n' +
@@ -121,14 +151,32 @@ const loader = '\n' +
 '    .then(function(buf){\n' +
 '      var d=JSON.parse(new TextDecoder().decode(buf));\n' +
 '      SEED_ROWS=d.rows;SEED_SNAPS=d.snaps;SEED_DAYS=d.days;SEED_SIERRA=d.sierra;SEED_UPDATED=d.updated;SEED_ADS=d.ads||[];\n' +
-'      __boot();\n' +
+'      __apply();\n' +
+'      __stamp(true);\n' +
 '    })\n' +
 '    .catch(function(e){\n' +
 '      var why=String(e&&e.message||e);\n' +
 '      if(/operationerror|operation-specific reason|decrypt/i.test(why))why="This copy of the tracker does not match the published figures \\u2014 ask whoever sent it for the current file.";\n' +
-'      if(ctx)ctx.textContent="Could not load the numbers";\n' +
-'      __say("The numbers could not be loaded",why+" The figures themselves are safe \\u2014 nothing was lost.");\n' +
-'    });\n' +
+'      if(first){\n' +
+'        if(ctx)ctx.textContent="Could not load the numbers";\n' +
+'        __say("The numbers could not be loaded",why+" The figures themselves are safe \\u2014 nothing was lost.");\n' +
+'      } else {\n' +
+'        /* a later check that fails leaves the good figures on screen */\n' +
+'        __stamp(false,/fetch/i.test(why)?"no connection":why);\n' +
+'      }\n' +
+'    })\n' +
+'    .then(function(){__busy=false;});\n' +
+'}\n' +
+/* The figures are republished every five minutes, so the page asks on the
+   same beat. A tab the browser has throttled catches up the moment it is
+   looked at again, and a laptop coming back online catches up at once. */
+'(function(){\n' +
+'  __pull(true);\n' +
+'  setInterval(function(){__pull(false);},300000);\n' +
+'  document.addEventListener("visibilitychange",function(){\n' +
+'    if(document.visibilityState==="visible")__pull(false);\n' +
+'  });\n' +
+'  window.addEventListener("online",function(){__pull(false);});\n' +
 '})();\n';
 
 if (WANT_PAGE) fs.writeFileSync(PAGE_OUT, head + loader + tail, 'utf8');
