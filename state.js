@@ -35,7 +35,9 @@ const FILES = [
   /* the page the build starts from. It carries the Sierra address and a couple
      of staff names in its placeholder text, and the repository is public, so it
      travels locked like everything else that names anybody. */
-  'marketing-pillar-tracker.html'
+  'marketing-pillar-tracker.html',
+  /* its seed rows are the real campaigns, with their names and their spend */
+  'build-standalone.js'
 ];
 /* The artwork is binary and it is slow to fetch, so it travels here too rather
    than being downloaded again every run. The five-minute pass asks Meta only

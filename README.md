@@ -6,7 +6,9 @@ Meta, and publishes the numbers. Both the Claude tracker page and the file you
 share fetch them on their own, so neither is ever out of date, no matter how long
 ago you sent it.
 
-**Not set up yet? Start at [SETUP-NOW.md](SETUP-NOW.md).**
+**Not set up yet?** , next to this file on the computer that built
+the repository, is the three steps only you can do: sign in, push, paste the
+secrets. It stays out of the repository because it holds your own paths.
 
 Free: public repository, so GitHub charges nothing for the runs.
 
