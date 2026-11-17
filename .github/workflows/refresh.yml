@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 45
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy_again.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -101,7 +101,12 @@ jobs:
           printf '%s\n' "$META_TOKEN" > meta-token.txt
           printf '%s\n' "$SIERRA_API_KEY" > sierra-api-key.txt
 
+      # continue-on-error so the job does not end red yet. Whether this failure
+      # is worth telling anyone about is decided further down, by which kind of
+      # run it was.
       - name: Pull, check and build
+        id: build
+        continue-on-error: true
         env:
           META_TOKEN: ${{ secrets.META_TOKEN }}
           SIERRA_SITE: ${{ secrets.SIERRA_SITE }}
@@ -118,7 +123,7 @@ jobs:
           esac
 
       - name: Lock the working files away again
-        if: success()
+        if: success() && steps.build.outcome == 'success'
         env:
           STATE_KEY: ${{ secrets.STATE_KEY }}
         run: node state.js pack
@@ -130,7 +135,7 @@ jobs:
       # Once a day, keep a copy in the repository itself, so a cleared cache
       # never costs more than one day of lead agents and hand-typed notes.
       - name: Keep the daily backup
-        if: success() && steps.kind.outputs.mode == 'full'
+        if: success() && steps.build.outcome == 'success' && steps.kind.outputs.mode == 'full'
         run: |
           git config user.name  'tracker'
           git config user.email 'tracker@users.noreply.github.com'
@@ -139,19 +144,36 @@ jobs:
           git push
 
       - uses: actions/configure-pages@v5
-        if: success()
+        if: success() && steps.build.outcome == 'success'
       - uses: actions/upload-pages-artifact@v3
-        if: success()
+        if: success() && steps.build.outcome == 'success'
         with:
           path: docs
+
+      # GitHub's Pages API turns a deployment away every so often — "Fetching
+      # artifact metadata failed", and then it cannot find an artifact that is
+      # plainly there. It was the single commonest reason this workflow went
+      # red. One retry costs seconds; only a second refusal is real news.
       - id: deploy
-        if: success()
+        if: success() && steps.build.outcome == 'success'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - id: deploy_again
+        if: success() && steps.build.outcome == 'success' && steps.deploy.outcome == 'failure'
         uses: actions/deploy-pages@v4
 
-      # A failed run publishes nothing: the file people are looking at keeps
-      # the last numbers that passed every check. This just says so out loud.
+      # A failed run publishes nothing: the file people are looking at keeps the
+      # last numbers that passed every check.
+      #
+      # Which failures are worth an email, though, is not the same question. A
+      # figures or quick run that stumbles is not news — the next one is five to
+      # thirty minutes away, nothing was published, and the figures people see
+      # are unchanged. Those now end the run green with a warning in the log.
+      # The once-a-day audit is different: it is the run that checks every week
+      # and every month against Meta to the cent, and if that does not pass,
+      # something is genuinely wrong and the inbox should say so.
       - name: Say what went wrong
-        if: failure()
+        if: always() && steps.build.outcome == 'failure'
         run: |
           echo '## The tracker did not update' >> $GITHUB_STEP_SUMMARY
           echo '' >> $GITHUB_STEP_SUMMARY
@@ -160,3 +182,8 @@ jobs:
           echo '```' >> $GITHUB_STEP_SUMMARY
           cat 'LAST RUN.txt' 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo 'The run stopped before it could say why — see the log above.' >> $GITHUB_STEP_SUMMARY
           echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ '${{ steps.kind.outputs.mode }}' = 'full' ]; then
+            echo '::error::The daily audit did not pass. Nothing was published — see the summary above.'
+            exit 1
+          fi
+          echo '::warning::A ${{ steps.kind.outputs.mode }} run did not update. Nothing was published; the next run is a few minutes away.'
