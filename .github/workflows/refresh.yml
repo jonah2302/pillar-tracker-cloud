@@ -47,7 +47,7 @@ jobs:
     timeout-minutes: 45
     environment:
       name: github-pages
-      url: ${{ steps.deploy.outputs.page_url || steps.deploy_again.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy2.outputs.page_url || steps.deploy3.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
 
@@ -141,7 +141,10 @@ jobs:
           git config user.email 'tracker@users.noreply.github.com'
           git add --force state.enc
           git diff --cached --quiet || git commit -m "Figures as of $(date -u '+%Y-%m-%d %H:%M') UTC"
-          git push
+          # Someone may have pushed since this run checked out. Rebasing and
+          # trying once more costs nothing and keeps a backup from turning the
+          # whole run red.
+          git push || { git pull --rebase --autostash && git push; }
 
       - uses: actions/configure-pages@v5
         if: success() && steps.build.outcome == 'success'
@@ -151,39 +154,84 @@ jobs:
           path: docs
 
       # GitHub's Pages API turns a deployment away every so often — "Fetching
-      # artifact metadata failed", and then it cannot find an artifact that is
-      # plainly there. It was the single commonest reason this workflow went
-      # red. One retry costs seconds; only a second refusal is real news.
+      # artifact metadata failed", and then it cannot find an artifact it was
+      # handed a moment earlier. It is the commonest reason this workflow goes
+      # red, and it has nothing to do with the figures, which are already built
+      # and checked by the time we get here.
+      #
+      # Three attempts, spaced out, because a single immediate retry is not
+      # enough — it has been refused twice in a row. Nothing here ends the job:
+      # the gate at the bottom decides what, if anything, is worth saying.
       - id: deploy
         if: success() && steps.build.outcome == 'success'
         continue-on-error: true
         uses: actions/deploy-pages@v4
-      - id: deploy_again
+      - if: success() && steps.build.outcome == 'success' && steps.deploy.outcome == 'failure'
+        run: sleep 30
+      - id: deploy2
         if: success() && steps.build.outcome == 'success' && steps.deploy.outcome == 'failure'
+        continue-on-error: true
+        uses: actions/deploy-pages@v4
+      - if: success() && steps.build.outcome == 'success' && steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        run: sleep 90
+      - id: deploy3
+        if: success() && steps.build.outcome == 'success' && steps.deploy.outcome == 'failure' && steps.deploy2.outcome == 'failure'
+        continue-on-error: true
         uses: actions/deploy-pages@v4
 
-      # A failed run publishes nothing: the file people are looking at keeps the
-      # last numbers that passed every check.
+      # The one place that decides whether this run is worth an email.
       #
-      # Which failures are worth an email, though, is not the same question. A
-      # figures or quick run that stumbles is not news — the next one is five to
-      # thirty minutes away, nothing was published, and the figures people see
-      # are unchanged. Those now end the run green with a warning in the log.
-      # The once-a-day audit is different: it is the run that checks every week
-      # and every month against Meta to the cent, and if that does not pass,
-      # something is genuinely wrong and the inbox should say so.
-      - name: Say what went wrong
-        if: always() && steps.build.outcome == 'failure'
+      # A run that does not finish publishes nothing, so the page people are
+      # looking at keeps the last numbers that passed every check. That makes
+      # most stumbles invisible to everyone: the next run is five to thirty
+      # minutes away and simply carries on.
+      #
+      # So only the once-a-day audit — the run that puts every week and every
+      # month back to Meta and checks it to the cent — is allowed to turn this
+      # job red, which is what sends mail. Everything else says its piece in
+      # the log and ends green. That puts a hard ceiling of one failure email a
+      # day on the whole thing, and when one arrives it means something a
+      # person actually has to look at.
+      - name: Decide whether this is worth an email
+        if: always()
+        env:
+          MODE: ${{ steps.kind.outputs.mode }}
+          BUILD: ${{ steps.build.outcome }}
+          D1: ${{ steps.deploy.outcome }}
+          D2: ${{ steps.deploy2.outcome }}
+          D3: ${{ steps.deploy3.outcome }}
         run: |
-          echo '## The tracker did not update' >> $GITHUB_STEP_SUMMARY
-          echo '' >> $GITHUB_STEP_SUMMARY
-          echo 'The published figures are unchanged — they are the last ones that matched Meta.' >> $GITHUB_STEP_SUMMARY
-          echo '' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          cat 'LAST RUN.txt' 2>/dev/null >> $GITHUB_STEP_SUMMARY || echo 'The run stopped before it could say why — see the log above.' >> $GITHUB_STEP_SUMMARY
-          echo '```' >> $GITHUB_STEP_SUMMARY
-          if [ '${{ steps.kind.outputs.mode }}' = 'full' ]; then
-            echo '::error::The daily audit did not pass. Nothing was published — see the summary above.'
-            exit 1
+          loud() {   # red, and therefore an email — but only from the daily audit
+            if [ "$MODE" = 'full' ]; then echo "::error::$1"; exit 1; fi
+            echo "::warning::$1"
+          }
+
+          if [ "$BUILD" = 'failure' ]; then
+            {
+              echo '## The tracker did not update'
+              echo ''
+              echo 'The published figures are unchanged — they are the last ones that matched Meta.'
+              echo ''
+              echo '```'
+              cat 'LAST RUN.txt' 2>/dev/null || echo 'The run stopped before it could say why — see the log above.'
+              echo '```'
+            } >> $GITHUB_STEP_SUMMARY
+            loud 'The figures did not pass their checks, so nothing was published. See the summary above.'
+            exit 0
           fi
-          echo '::warning::A ${{ steps.kind.outputs.mode }} run did not update. Nothing was published; the next run is a few minutes away.'
+
+          if [ "$D1" = 'success' ] || [ "$D2" = 'success' ] || [ "$D3" = 'success' ]; then
+            exit 0
+          fi
+
+          if [ "$D1" = 'skipped' ] && [ "$D2" = 'skipped' ] && [ "$D3" = 'skipped' ]; then
+            exit 0     # never got as far as publishing; not a publishing problem
+          fi
+
+          {
+            echo '## The figures were good, but GitHub would not publish them'
+            echo ''
+            echo 'Three attempts to deploy to GitHub Pages were refused. The numbers'
+            echo 'themselves passed every check — the next run will publish them.'
+          } >> $GITHUB_STEP_SUMMARY
+          loud 'GitHub Pages refused the deployment three times. The figures are fine; the next run republishes them.'

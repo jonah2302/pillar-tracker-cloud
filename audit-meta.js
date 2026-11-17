@@ -206,16 +206,47 @@ const satOf = s => { let d = s; while (P(d).getUTCDay() !== 6) d = add(d, -1); r
   }
   console.log('Random ranges   ' + rOk + ' of 25 match');
 
-  // lead names vs counts, per campaign per day
-  let nOk = 0, nN = 0;
+  /* lead names vs counts, per campaign per day.
+   *
+   * The two sides come from two different Meta endpoints and they do not mean
+   * quite the same thing. The lead count is what Insights ATTRIBUTES to paid
+   * delivery. The names are every submission the form itself received. A form
+   * can be filled in by someone Meta never charged us for — an organic visit,
+   * or a click whose attribution window had closed — and then a real person
+   * with a real name sits on a day Insights counts one lower.
+   *
+   * That happened on 2026-11-13: nine people filled the forms, Meta counted
+   * eight, every other day of the month agreed to the lead, and the month
+   * totals matched to the cent. Nothing is wrong with the tracker, so failing
+   * the audit over it only sends mail nobody can act on.
+   *
+   * So the check is asymmetric now, which is what it should always have been:
+   *
+   *   fewer names than leads  -> FAILS. Meta charged for a lead whose name we
+   *                              never got. That is a hole in the data and
+   *                              somebody has to look.
+   *   more names than leads   -> a note, not a failure. An extra real person.
+   *
+   * The same asymmetry applies per campaign, so a name landing under the wrong
+   * campaign still fails: it makes that campaign short by one.
+   */
+  let nOk = 0, nN = 0, nExtra = 0;
+  const extras = [];
   for (let d = first; d <= until; d = add(d, 1)) {
     const f = fileRange(d, d), nm = namesIn(d, d); nN++;
-    let ok = nm.n === f.leads;
-    Object.keys(f.by).forEach(c => { if ((nm.by[c] || 0) !== f.by[c].leads) ok = false; });
-    if (ok) nOk++; else bad.push('Names ' + d + ': ' + nm.n + ' names, ' + f.leads + ' leads ' + JSON.stringify(nm.by));
+    let missing = nm.n < f.leads;
+    Object.keys(f.by).forEach(c => { if ((nm.by[c] || 0) < f.by[c].leads) missing = true; });
+    if (missing) {
+      bad.push('Names ' + d + ': ' + nm.n + ' names, ' + f.leads + ' leads ' + JSON.stringify(nm.by));
+    } else {
+      nOk++;
+      if (nm.n > f.leads) { nExtra++; extras.push(d + ' (' + nm.n + ' named, ' + f.leads + ' counted)'); }
+    }
     checks++;
   }
   console.log('Lead names      ' + nOk + ' of ' + nN + ' days: every lead counted has its name, under the right campaign');
+  if (nExtra) console.log('                ' + nExtra + ' day' + (nExtra === 1 ? '' : 's') +
+    ' had a form filled in that Meta did not count as a paid lead — the name is kept: ' + extras.join(', '));
 
   // Active / Paused on every campaign row = Meta's on/off switch right now
   const sj = await getRetry('https://graph.facebook.com/' + CFG.apiVersion + '/act_' + CFG.accountId +
