@@ -26,7 +26,13 @@ const DIR = __dirname, OUT = path.join(DIR, 'docs');
 const SRC = path.join(DIR, 'Meta Ads Tracker - OFFLINE.html');
 const DATA_URL = (process.env.DATA_URL || '').trim();
 const PASSWORD = (process.env.PAGE_PASSWORD || '').trim();
-const ITER = 200000;
+/* Cloudflare Workers refuses PBKDF2 above 100,000 iterations ("iteration
+   counts above 100000 are not supported"), and the worker has to open what
+   Actions seals. The key is 32 random characters, not a typed password, so
+   the stretching was never what stood between anyone and the figures. Both
+   halves seal at this number; every reader takes the count from the feed
+   itself, so a page built before this change still opens a feed built after. */
+const ITER = 100000;
 const WANT_PAGE = process.argv.includes('--page');
 const WANT_DATA = process.argv.includes('--data') || !WANT_PAGE;
 const PAGE_OUT = path.join(DIR, 'Marketing Pillar Tracker (live).html');

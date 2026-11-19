@@ -1,0 +1,15 @@
+{
+  "name": "pillar-tracker-feed",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "The every-minute half of the tracker: pulls Meta on Cloudflare's cron, patches the figures into the last full build, and serves the encrypted feed.",
+  "scripts": {
+    "check": "node verify-crypto.cjs && node verify-shape.mjs",
+    "deploy": "wrangler deploy",
+    "tail": "wrangler tail"
+  },
+  "devDependencies": {
+    "wrangler": "^4.165.0"
+  }
+}

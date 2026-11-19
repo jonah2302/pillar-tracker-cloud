@@ -1,0 +1,33 @@
+name = "pillar-tracker-feed"
+main = "src/index.js"
+compatibility_date = "2025-09-01"
+
+# Every minute, all day. Cloudflare's cron does fire on the minute, which is
+# the whole reason this half exists — GitHub's would not.
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# Where GitHub Actions publishes the full payload — Sierra, the artwork and the
+# weekly history. The worker takes that as its base and overwrites only the
+# figures that move minute to minute.
+BASE_URL = "https://jonah2302.github.io/pillar-tracker-cloud/data.enc.json"
+
+# The same account, campaign names and lead action types config.json gives the
+# Node side. Kept here so the two halves count a lead the same way. If you edit
+# config.json, re-run: node worker/sync-config.cjs
+CONFIG_JSON = '{"accountId":"1393324416262592","apiVersion":"v21.0","firstDay":"2026-09-01","excludeCampaigns":["Hannah\u0027s Highland Park Listing ad"],"leadActionTypes":["onsite_conversion.lead_grouped","lead","offsite_conversion.fb_pixel_lead","leadgen_grouped","onsite_conversion.lead"],"campaignIds":{"sellers ad":"meta30_sellers","Buyers Campaign":"meta30_buyers","2021 27 Avenue SW":"meta30_2021_27ave","Buyers \u0026 Sellers campaign":"meta30_buyers_sellers","Micah\u0027s Chaparral Listing":"meta30_chaparral","Buyers \u0026 Sellers campaign - 2.0":"meta_bs2"}}'
+
+# Holds the current encrypted feed and the last full payload. Created by:
+#   npx wrangler kv namespace create FEED
+# then paste the id it prints over the placeholder below.
+[[kv_namespaces]]
+binding = "FEED"
+id = "8e2cb6296fbe48c5b7a52fea6602216b"
+
+# The three secrets, never written in this file:
+#   npx wrangler secret put META_TOKEN      the Meta token GitHub also holds
+#   npx wrangler secret put PAGE_PASSWORD   the key the shared page carries
+#   npx wrangler secret put PAGE_PATH       the secret half of your link;
+#                                           the page is served at /t/<it>
+# See SETUP.md.
