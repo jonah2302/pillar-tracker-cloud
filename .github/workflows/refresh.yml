@@ -3,25 +3,29 @@ name: Refresh the tracker
 # Pulls Meta and Sierra, checks every figure against Meta, and publishes the
 # locked numbers. Nothing here needs a laptop, a browser tab, or anyone awake.
 #
-# Three rhythms, because the three jobs cost very different amounts of time:
+# Two rhythms, because the two jobs cost very different amounts of time:
 #
-#   every 5 minutes   spend, leads and the running ads. No browser, no artwork
-#                     download, no Sierra — about a minute end to end, which is
-#                     what makes a five-minute rhythm affordable at all.
-#   every 30 minutes  the same, plus Sierra: who has been called, texted and
-#                     emailed. Needs a headless Chromium, so it takes minutes.
+#   every 30 minutes  spend, leads, the running ads, and Sierra: who has been
+#                     called, texted and emailed. Needs a headless Chromium,
+#                     so it takes minutes.
 #   once a day        the full audit — about 200 questions put back to Meta,
 #                     every week and every month, to the cent.
+#
+# There used to be a third, every five minutes, for the figures alone. The
+# worker in worker/ does that job now, on Cloudflare's cron, which actually
+# fires: GitHub delivered four to ten of the ~170 runs a day this asked for,
+# and each one cost a slow Pages deploy for numbers that were already current.
+# Whatever this workflow publishes is the base the worker patches minute by
+# minute, so these runs still carry Sierra, the artwork and the history.
 #
 # Times are UTC, as GitHub requires. Calgary is UTC-6 in summer and UTC-7 in
 # winter, so the windows below cover 7am to 10pm local in both halves of the
 # year. GitHub's scheduler is best-effort and runs late when it is busy, so
-# treat "every 5 minutes" as "usually within five to fifteen".
+# treat "every 30 minutes" as "when it gets round to it".
 
 on:
   schedule:
-    - cron: '*/5 13-23,0-5 * * *'          # figures and running ads
-    - cron: '2,32 13-23,0-5 * * *'         # the same, plus Sierra
+    - cron: '2,32 13-23,0-5 * * *'         # figures, running ads and Sierra
     - cron: '7 14 * * *'                   # once a day: the full audit
   workflow_dispatch:                       # the "Run workflow" button
     inputs:
@@ -67,6 +71,9 @@ jobs:
         with:
           node-version: '20'
 
+      # The "figures" branch below is no longer reached: its cron is gone and
+      # the worker does that job. It is left in place so that putting the cron
+      # back is a one-line change if Cloudflare ever has to be dropped.
       - name: Decide which kind of run this is
         id: kind
         run: |
